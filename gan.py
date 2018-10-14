@@ -33,7 +33,7 @@ def save_samples_as_images( S: '9x784', filename ):
     plt.close()
 
 trans = torchvision.transforms.Compose([torchvision.transforms.ToTensor()])
-mnist = torchvision.datasets.MNIST('./mnist', train=True, transform=trans, download=False)
+mnist = torchvision.datasets.MNIST('./mnist', train=True, transform=trans, download=True)
 mnistdl = torch.utils.data.DataLoader(mnist, shuffle=True, batch_size=batch_size//2, drop_last=True,
     pin_memory=True)
 
