@@ -1,4 +1,4 @@
-import torch
+import torch, os
 import torchvision
 import torch.nn.functional as F
 import torch.nn as nn
@@ -9,10 +9,20 @@ import numpy as np
 
 import matplotlib.pyplot as plt
 
-batch_size = 128
-disc_train_k = 3
-gen_train_k = 1
-epochs = 100
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument('--batch_size', type=int, required=False, default=128)
+parser.add_argument('--kD', type=int, required=False, default=3)
+parser.add_argument('--kG', type=int, required=False, default=1)
+parser.add_argument('-e', '--epochs', type=int, required=False, default=100)
+parser.add_argument('--base', type=str, required=False, default='.')
+args = parser.parse_args()
+
+batch_size = args.batch_size
+disc_train_k = args.kD
+gen_train_k = args.kG
+epochs = args.epochs
+
 noise_dim = 100
 data_dim = 28*28
 
@@ -33,7 +43,8 @@ def save_samples_as_images( S: '9x784', filename ):
     plt.close()
 
 trans = torchvision.transforms.Compose([torchvision.transforms.ToTensor()])
-mnist = torchvision.datasets.MNIST('./mnist', train=True, transform=trans, download=True)
+data_root = os.path.join(args.base, 'mnist')
+mnist = torchvision.datasets.MNIST(data_root, train=True, transform=trans, download=True)
 mnistdl = torch.utils.data.DataLoader(mnist, shuffle=True, batch_size=batch_size//2, drop_last=True,
     pin_memory=True)
 
@@ -51,9 +62,6 @@ if __name__ == '__main__':
     optim_disc = optim.Adam(disc.parameters(), lr=1e-4)
 
     BCEcrit = nn.BCELoss()
-
-    GenLosses = []
-    DiscLosses = []
 
     # labels are always same
     disc_labels = torch.cat([torch.ones(batch_size//2, 1),
@@ -120,37 +128,20 @@ if __name__ == '__main__':
                     gloss = gen_loss.data.item()
                     dloss = disc_loss.data.item()
 
-                GenLosses.append(gloss)
-                DiscLosses.append(dloss)
-
                 # generate samples
                 with torch.no_grad():
                     noise_ = torch.from_numpy(np.random.normal(size=(9, noise_dim)).astype(np.float32))
                     if torch.cuda.is_available():
                         noise_ = noise_.cuda()
                     sample_ = gen(noise_)
+                    sample_dir = os.path.join(args.base, 'samples')
                     if torch.cuda.is_available():
-                        save_samples_as_images(sample_.cpu().data.numpy(), 'samples/sample_'+str(i))
+                        save_samples_as_images(sample_.cpu().data.numpy(), sample_dir + '/sample_'+str(i))
                     else:
-                        save_samples_as_images(sample_.data.numpy(), 'samples/sample_'+str(i))
+                        save_samples_as_images(sample_.data.numpy(), sample_dir + '/sample_'+str(i))
 
-                print('disc loss: {0} | gen loss {1}'.format(DiscLosses[-1], GenLosses[-1]))
-
-                # # see the distribution of discriminator's output prob
-                # if torch.cuda.is_available():
-                #     d_mean = disc_out.cpu().data.numpy().mean()
-                #     d_std = disc_out.cpu().data.numpy().std()
-                # else:
-                #     d_mean = disc_out.data.numpy().mean()
-                #     d_std = disc_out.data.numpy().std()
-                # print('\'disc_out\' distribution: mu={0}, std={1}'.format(d_mean ,d_std))
+                print('Disc loss: {0:.5f} | Gen loss {1:.5f}'.format(dloss, gloss))
 
         # time to save generator model at each epoch
         print('saving model')
-        torch.save(gen.state_dict(), './model/genmodel.pt')
-    
-    # save the losses
-    GenLosses = np.array(GenLosses)
-    DiscLosses = np.array(DiscLosses)
-    np.save('./log/genloss.npy', GenLosses)
-    np.save('./log/discloss.npy', DiscLosses)
+        torch.save(gen.state_dict(), args.base + '/genmodel.pt')
