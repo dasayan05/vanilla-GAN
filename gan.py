@@ -10,7 +10,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 batch_size = 128
-disc_train_k = 1
+disc_train_k = 3
 gen_train_k = 1
 epochs = 100
 noise_dim = 100
@@ -41,7 +41,7 @@ if __name__ == '__main__':
     gen = MLP(noise_dim, [256, 512, 1024, data_dim],
         activations=[nn.ReLU(), nn.ReLU(), nn.ReLU(), nn.Tanh()])
     disc = MLP(data_dim, [512,256,1], bn=False,
-        activations=[nn.LeakyReLU(0.2), nn.LeakyReLU(0.2), torch.sigmoid])
+        activations=[nn.LeakyReLU(0.2), nn.LeakyReLU(0.2), lambda x: x])
     
     if torch.cuda.is_available():
         gen = gen.cuda()
@@ -83,15 +83,19 @@ if __name__ == '__main__':
                 # two forward passes
                 disc_out_data = disc(data)
                 disc_out_noise = disc(gen(noise))
-                disc_out = torch.cat([disc_out_data, disc_out_noise], dim=0)
 
-                # discriminator loss
-                disc_loss = BCEcrit(disc_out, disc_labels)
+                # # discriminator loss
+                # disc_out = torch.cat([disc_out_data, disc_out_noise], dim=0)
+                # disc_loss = BCEcrit(disc_out, disc_labels)
+                disc_loss = torch.mean(disc_out_noise) - torch.mean(disc_out_data)
 
                 # back-prop
                 disc_loss.backward()
                 # weight update
                 optim_disc.step()
+
+                for p in disc.parameters():
+                    p.data.clamp_(-0.01, 0.01) # gradient clip
 
             for _ in range(gen_train_k):
                 optim_gen.zero_grad()
@@ -100,7 +104,8 @@ if __name__ == '__main__':
                 gen_out_noise = disc(gen(noise))
 
                 # generator loss
-                gen_loss = BCEcrit(gen_out_noise, gen_labels)
+                # gen_loss = BCEcrit(gen_out_noise, gen_labels)
+                gen_loss = - torch.mean(gen_out_noise)
 
                 # back-prop
                 gen_loss.backward()
@@ -131,14 +136,14 @@ if __name__ == '__main__':
 
                 print('disc loss: {0} | gen loss {1}'.format(DiscLosses[-1], GenLosses[-1]))
 
-                # see the distribution of discriminator's output prob
-                if torch.cuda.is_available():
-                    d_mean = disc_out.cpu().data.numpy().mean()
-                    d_std = disc_out.cpu().data.numpy().std()
-                else:
-                    d_mean = disc_out.data.numpy().mean()
-                    d_std = disc_out.data.numpy().std()
-                print('\'disc_out\' distribution: mu={0}, std={1}'.format(d_mean ,d_std))
+                # # see the distribution of discriminator's output prob
+                # if torch.cuda.is_available():
+                #     d_mean = disc_out.cpu().data.numpy().mean()
+                #     d_std = disc_out.cpu().data.numpy().std()
+                # else:
+                #     d_mean = disc_out.data.numpy().mean()
+                #     d_std = disc_out.data.numpy().std()
+                # print('\'disc_out\' distribution: mu={0}, std={1}'.format(d_mean ,d_std))
 
         # time to save generator model at each epoch
         print('saving model')
